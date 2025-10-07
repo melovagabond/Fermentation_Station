@@ -62,19 +62,13 @@ if (( TAILWIND_V3 == 0 )); then
 
   npm i -D @tailwindcss/cli @tailwindcss/postcss tailwindcss@latest
 
-  # init config (v4)
-  npx @tailwindcss/cli init --postcss
-
-  # ensure content in config
-  if [[ -f tailwind.config.js ]]; then
-    # overwrite with minimal v4 config
-    cat > tailwind.config.js <<'EOF'
+  # ensure content in config (create minimal v4 config)
+  cat > tailwind.config.js <<'EOF'
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
 }
 EOF
-  fi
 
   # enforce Tailwind v4 PostCSS plugin usage
   cat > postcss.config.js <<'EOF'
