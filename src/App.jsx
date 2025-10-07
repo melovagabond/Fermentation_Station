@@ -22,6 +22,41 @@ const gFromLb = (lb) => lb * 453.59237;
 const gFromOz = (oz) => oz * 28.349523125;
 const mlFromGal = (gal) => gal * 3785.411784;
 
+const gramsToUnit = (g, unit) => {
+  switch (unit) {
+    case "kg":
+      return g / 1000;
+    case "oz":
+      return ozFromG(g);
+    case "lb":
+      return lbFromG(g);
+    case "g":
+    default:
+      return g;
+  }
+};
+
+const mlToUnit = (ml, unit) => {
+  switch (unit) {
+    case "l":
+      return ml / 1000;
+    case "gal":
+      return ml / 3785.411784;
+    case "ml":
+    default:
+      return ml;
+  }
+};
+
+const formatAutoNumber = (value) => {
+  if (!Number.isFinite(value)) return "";
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toFixed(0);
+  if (abs >= 100) return value.toFixed(1);
+  if (abs >= 10) return value.toFixed(2);
+  return value.toFixed(3);
+};
+
 function classNames(...xs) {
   return xs.filter(Boolean).join(" ");
 }
@@ -125,7 +160,20 @@ function Section({ title, description, children }) {
   );
 }
 
-function NumberWithUnit({ label, value, onValue, unit, onUnit, units, min = 0, step = "any" }) {
+function NumberWithUnit({
+  label,
+  value,
+  onValue,
+  unit,
+  onUnit,
+  units,
+  min = 0,
+  step = "any",
+  inputDisabled = false,
+  selectDisabled = false,
+  readOnly = false,
+  helper,
+}) {
   return (
     <div className="flex items-end gap-2">
       <div className="flex-1">
@@ -137,12 +185,26 @@ function NumberWithUnit({ label, value, onValue, unit, onUnit, units, min = 0, s
           min={min}
           step={step}
           onChange={(e) => onValue(e.target.value)}
-          className="w-full mt-1 rounded-xl border px-3 py-2"
+          disabled={inputDisabled}
+          readOnly={readOnly}
+          className={classNames(
+            "w-full mt-1 rounded-xl border px-3 py-2",
+            inputDisabled || readOnly ? "bg-slate-100 text-slate-500" : ""
+          )}
         />
+        {helper && <p className="text-xs text-slate-500 mt-1">{helper}</p>}
       </div>
       <div>
         <label className="text-sm text-slate-600">Unit</label>
-        <select value={unit} onChange={(e) => onUnit(e.target.value)} className="w-28 mt-1 rounded-xl border px-3 py-2">
+        <select
+          value={unit}
+          onChange={(e) => onUnit(e.target.value)}
+          disabled={selectDisabled}
+          className={classNames(
+            "w-28 mt-1 rounded-xl border px-3 py-2",
+            selectDisabled ? "bg-slate-100 text-slate-500" : ""
+          )}
+        >
           {units.map((u) => (
             <option key={u} value={u}>
               {u}
@@ -171,13 +233,16 @@ function Pill({ children, active = false, onClick }) {
 // ----------------------------- App -----------------------------
 export default function FermentationStationApp() {
   const [tab, setTab] = useState("veg");
+  const [veggies, setVeggies] = useVeggies();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900">
       <div className="max-w-5xl mx-auto p-6 md:p-10">
         <header className="mb-6 md:mb-10">
           <h1 className="text-3xl md:text-4xl font-black tracking-tight">Fermentation Station</h1>
-          <p className="text-slate-600 mt-2">Veg tracking, salt & pickle math, and a no-nonsense brew calculator.</p>
+          <p className="text-slate-600 mt-2">
+            Track your produce, auto-calc dry salting and brine ratios, and keep pickling or brewing math at your fingertips.
+          </p>
         </header>
 
         <nav className="flex flex-wrap gap-2 mb-6">
@@ -193,8 +258,8 @@ export default function FermentationStationApp() {
           ))}
         </nav>
 
-        {tab === "veg" && <VegSection />}
-        {tab === "lacto" && <LactoSection />}
+        {tab === "veg" && <VegSection veggies={veggies} setVeggies={setVeggies} />}
+        {tab === "lacto" && <LactoSection veggies={veggies} />}
         {tab === "pickle" && <PickleSection />}
         {tab === "brew" && <BrewSection />}
 
@@ -207,8 +272,7 @@ export default function FermentationStationApp() {
 }
 
 // ----------------------------- Sections -----------------------------
-function VegSection() {
-  const [veggies, setVeggies] = useVeggies();
+function VegSection({ veggies, setVeggies }) {
 
   const [type, setType] = useState("");
   const [wVal, setWVal] = useState("");
@@ -231,7 +295,10 @@ function VegSection() {
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <Section title="Add Vegetable" description="Type + weight. Stored locally in your browser.">
+      <Section
+        title="Add Vegetable"
+        description="Log each ingredient and its weight. Everything stays in your browser so you can tweak without losing track."
+      >
         <div className="space-y-3">
           <div>
             <label className="text-sm text-slate-600">Type</label>
@@ -245,7 +312,10 @@ function VegSection() {
         </div>
       </Section>
 
-      <Section title="Vegetables" description="Your current pile. Use total for dry-salt math.">
+      <Section
+        title="Vegetables"
+        description="This running total feeds the lacto calculators automatically—add or remove items here to update dry salt and brine math."
+      >
         {veggies.length === 0 ? (
           <p className="text-slate-600">No vegetables yet. Add some.</p>
         ) : (
@@ -274,41 +344,64 @@ function VegSection() {
   );
 }
 
-function LactoSection() {
+function LactoSection({ veggies }) {
+  const totalVegG = useMemo(() => veggies.reduce((a, v) => a + (Number(v.weight_g) || 0), 0), [veggies]);
+  const autoFromVeg = totalVegG > 0;
+
   // Dry
   const [dryPct, setDryPct] = useState(2.5);
   const [dryVal, setDryVal] = useState("");
   const [dryUnit, setDryUnit] = useState("g");
 
+  const dryInputG = autoFromVeg ? totalVegG : gramsFromValueUnit(dryVal, dryUnit);
   const dryOut = useMemo(() => {
-    const g = gramsFromValueUnit(dryVal, dryUnit);
-    if (!g) return null;
-    return calcDrySalt(g, dryPct);
-  }, [dryVal, dryUnit, dryPct]);
+    if (!dryInputG) return null;
+    return calcDrySalt(dryInputG, dryPct);
+  }, [dryInputG, dryPct]);
 
   // Brine
   const [brVal, setBrVal] = useState("");
   const [brUnit, setBrUnit] = useState("ml");
   const [brPct, setBrPct] = useState(3);
 
+  const brInputMl = autoFromVeg ? totalVegG : mlFromValueUnit(brVal, brUnit);
   const brOut = useMemo(() => {
-    const ml = mlFromValueUnit(brVal, brUnit);
-    if (!ml) return null;
-    return calcBrine(ml, brPct);
-  }, [brVal, brUnit, brPct]);
+    if (!brInputMl) return null;
+    return calcBrine(brInputMl, brPct);
+  }, [brInputMl, brPct]);
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <Section title="Dry-Salt" description="Common range 2–3% of vegetable weight.">
+      <Section
+        title="Dry-Salt"
+        description="Common range 2–3% of vegetable weight. When veggies are logged, this auto-uses the total mass."
+      >
         <div className="space-y-3">
-          <NumberWithUnit label="Vegetable Weight" value={dryVal} onValue={setDryVal} unit={dryUnit} onUnit={setDryUnit} units={["g", "kg", "oz", "lb"]} />
+          <NumberWithUnit
+            label="Vegetable Weight"
+            value={autoFromVeg ? formatAutoNumber(gramsToUnit(totalVegG, dryUnit)) : dryVal}
+            onValue={autoFromVeg ? () => {} : setDryVal}
+            unit={dryUnit}
+            onUnit={setDryUnit}
+            units={["g", "kg", "oz", "lb"]}
+            inputDisabled={autoFromVeg}
+            readOnly={autoFromVeg}
+            helper={
+              autoFromVeg
+                ? `Auto-filled from Vegetables total (${fmtG(totalVegG)}).`
+                : "Enter the weight you plan to ferment."
+            }
+          />
           <div>
             <label className="text-sm text-slate-600">Salt %</label>
             <input type="number" value={dryPct} step="0.1" min={0} onChange={(e) => setDryPct(e.target.value)} className="w-full mt-1 rounded-xl border px-3 py-2" />
           </div>
           {dryOut && (
             <div className="rounded-xl bg-slate-50 border p-3">
-              <div className="text-sm">Use <b>{fmtG(dryOut.saltG)}</b> salt for {fmtG(dryOut.vegWeightG)} at {dryOut.pct}%.</div>
+              <div className="text-sm">
+                Use <b>{fmtG(dryOut.saltG)}</b> salt for {fmtG(dryOut.vegWeightG)} at {dryOut.pct}%
+                {autoFromVeg && " (auto from Vegetables tab)."}
+              </div>
             </div>
           )}
           <div className="flex gap-2">
@@ -321,16 +414,36 @@ function LactoSection() {
         </div>
       </Section>
 
-      <Section title="Brine" description="Salt % of water by weight. Enter total brine volume to make.">
+      <Section
+        title="Brine"
+        description="Salt % of water by weight. With veggies logged we estimate a matching brine volume (~1 mL per gram)."
+      >
         <div className="space-y-3">
-          <NumberWithUnit label="Brine Volume" value={brVal} onValue={setBrVal} unit={brUnit} onUnit={setBrUnit} units={["ml", "l", "gal"]} />
+          <NumberWithUnit
+            label="Brine Volume"
+            value={autoFromVeg ? formatAutoNumber(mlToUnit(totalVegG, brUnit)) : brVal}
+            onValue={autoFromVeg ? () => {} : setBrVal}
+            unit={brUnit}
+            onUnit={setBrUnit}
+            units={["ml", "l", "gal"]}
+            inputDisabled={autoFromVeg}
+            readOnly={autoFromVeg}
+            helper={
+              autoFromVeg
+                ? `Estimated from vegetable total (~1 mL per gram, ${fmtML(totalVegG)}).`
+                : "Enter the total brine volume you plan to mix."
+            }
+          />
           <div>
             <label className="text-sm text-slate-600">Salt %</label>
             <input type="number" value={brPct} step="0.1" min={0} onChange={(e) => setBrPct(e.target.value)} className="w-full mt-1 rounded-xl border px-3 py-2" />
           </div>
           {brOut && (
             <div className="rounded-xl bg-slate-50 border p-3">
-              <div className="text-sm">Use <b>{fmtG(brOut.saltG)}</b> salt in {fmtML(brOut.waterMl)} water at {brOut.pct}%.</div>
+              <div className="text-sm">
+                Use <b>{fmtG(brOut.saltG)}</b> salt in {fmtML(brOut.waterMl)} water at {brOut.pct}%
+                {autoFromVeg && " (auto from Vegetables tab)."}
+              </div>
             </div>
           )}
           <div className="flex gap-2">
