@@ -60,7 +60,7 @@ if (( TAILWIND_V3 == 0 )); then
   npm pkg delete devDependencies.postcss >/dev/null 2>&1 || true
   npm pkg delete devDependencies.autoprefixer >/dev/null 2>&1 || true
 
-  npm i -D @tailwindcss/cli tailwindcss@latest
+  npm i -D @tailwindcss/cli @tailwindcss/postcss tailwindcss@latest
 
   # init config (v4)
   npx @tailwindcss/cli init --postcss
@@ -75,6 +75,15 @@ export default {
 }
 EOF
   fi
+
+  # enforce Tailwind v4 PostCSS plugin usage
+  cat > postcss.config.js <<'EOF'
+import tailwindcss from "@tailwindcss/postcss"
+
+export default {
+  plugins: [tailwindcss()],
+}
+EOF
 
   # index.css with v4 import
   mkdir -p src
